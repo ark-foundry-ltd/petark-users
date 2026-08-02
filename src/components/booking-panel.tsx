@@ -221,7 +221,7 @@ export default function BookingPanel({
                                 {services.map((service, i) => {
                                     // Get service name and price whether it's an object or string
                                     const serviceName = typeof service === 'string' ? service : service.name;
-                                    const servicePrice = typeof service === 'object' && service.price ? service.price : null;
+                                    // const servicePrice = typeof service === 'object' && service.price ? service.price : null;
 
                                     return (
                                         <span
@@ -230,11 +230,12 @@ export default function BookingPanel({
                                         >
                                             <Stethoscope className="w-2.5 h-2.5 lg:w-3 lg:h-3" />
                                             {formatServiceLabel(service)}
-                                            {servicePrice !== null && (
+                                            {/* Removed the pricing, users are not meant to see the pricing of services, they'll start comparing with other clinics, and customers/clients might lose customers */}
+                                            {/* {servicePrice !== null && (
                                                 <span className="text-[9px] lg:text-[10px] text-green-600 ml-0.5">
                                                     ₦{servicePrice.toLocaleString()}
                                                 </span>
-                                            )}
+                                            )} */}
                                         </span>
                                     );
                                 })}
