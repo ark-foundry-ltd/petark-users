@@ -132,13 +132,19 @@ export default function PetsPanel() {
           href={`/dashboard/pets/${pet.id}`}
           className="flex items-center gap-3 px-5 py-4 hover:bg-gray-50 cursor-pointer"
         >
-          <Image
-            src={pet.photo || "/default-pet.png"}
-            alt={pet.name}
-            width={48}
-            height={48}
-            className="rounded-xl object-cover w-12 h-12"
-          />
+          {pet.photo ? (
+            <Image
+              src={pet.photo}
+              alt={pet.name}
+              width={48}
+              height={48}
+              className="rounded-xl object-cover w-12 h-12"
+            />
+          ) : (
+            <div className="rounded-xl bg-bg-clr w-12 h-12 flex items-center justify-center shrink-0">
+              <PawPrint className="w-5 h-5 text-pry-clr" />
+            </div>
+          )}
 
           <div className="flex-1 min-w-0">
             <p className="truncate font-bold text-sm">{pet.name}</p>

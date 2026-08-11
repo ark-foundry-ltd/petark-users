@@ -18,13 +18,19 @@ function PetCard({ pet }: Readonly<{ pet: Pet }>) {
     <div className="flex items-stretch gap-0 bg-pry-clr rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden w-full">
 
       {/* Photo — full height left strip */}
-      <div className="relative w-28 sm:w-32 shrink-0 bg-gray-100">
-        <Image
-          src={pet.photo && pet.photo !== '' ? pet.photo : '/default-pet.png'}
-          alt={pet.name}
-          fill
-          className="object-cover"
-        />
+      <div className="relative w-28 sm:w-32 shrink-0 bg-bg-clr">
+        {pet.photo && pet.photo !== '' ? (
+          <Image
+            src={pet.photo}
+            alt={pet.name}
+            fill
+            className="object-cover"
+          />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <PawPrint className="w-6 h-6 text-pry-clr" />
+          </div>
+        )}
       </div>
 
       {/* Right content */}

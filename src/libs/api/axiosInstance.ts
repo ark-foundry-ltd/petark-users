@@ -1,4 +1,4 @@
-// lib/api.ts (or wherever your axios instance is configured)
+// lib/axiosInstance.ts
 import axios from "axios";
 
 const api = axios.create({

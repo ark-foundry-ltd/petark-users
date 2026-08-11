@@ -1,11 +1,26 @@
 "use client";
 
-import { useState } from "react";
 import { Bell, ChevronRight, Headphones } from "lucide-react";
 import Link from "next/link";
+import { usePushSubscription } from "@/hooks/usePushSubscription";
+import { toast } from "sonner";
 
 export default function Actions() {
-    const [pushEnabled, setPushEnabled] = useState(false);
+    const { isSubscribed, loading, subscribe, unsubscribe } = usePushSubscription();
+
+    const handlePushToggle = async () => {
+        try {
+            if (isSubscribed) {
+                await unsubscribe();
+                toast.success("Notifications turned off");
+            } else {
+                await subscribe();
+                toast.success("Notifications turned on");
+            }
+        } catch {
+            toast.error("Could not update notification settings");
+        }
+    };
 
     return (
         <section>
@@ -34,15 +49,16 @@ export default function Actions() {
                     <button
                         type="button"
                         role="switch"
-                        aria-checked={pushEnabled}
-                        onClick={() => setPushEnabled((prev) => !prev)}
+                        aria-checked={isSubscribed}
+                        disabled={loading}
+                        onClick={handlePushToggle}
                         className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
-                            pushEnabled ? "bg-acc-clr" : "bg-bg-clr"
+                            isSubscribed ? "bg-acc-clr" : "bg-bg-clr"
                         }`}
                     >
                         <span
                             className={`inline-block h-5 w-5 transform rounded-full bg-pry-clr shadow transition-transform ${
-                                pushEnabled ? "translate-x-5" : "translate-x-0.5"
+                                isSubscribed ? "translate-x-5" : "translate-x-0.5"
                             }`}
                         />
                     </button>

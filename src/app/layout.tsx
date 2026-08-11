@@ -1,11 +1,17 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import './globals.css'
+import { ServiceWorkerRegistration } from '@/components/notifications/ServiceWorkerRegistration';
 
 
 export const metadata: Metadata = {
   title: "PetArk",
   description:
-    "PetArk is a digital health platform that connects pet owners with vet clinics"
+    "PetArk is a digital health platform that connects pet owners with vet clinics",
+  manifest: '/manifest.json',
+}
+
+export const viewport: Viewport = {
+  themeColor: "#22c55e",
 }
 
 export default function RootLayout({
@@ -30,6 +36,7 @@ export default function RootLayout({
       </head>
       <body>
         {children}
+        <ServiceWorkerRegistration />
       </body>
     </html>
   );

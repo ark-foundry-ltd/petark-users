@@ -6,7 +6,7 @@ import { getUserProfile } from '@/libs/api/user';
 import { toast } from 'sonner';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Search, ChevronDown, LogOut, User, Loader2 } from 'lucide-react';
+import { PawPrint, ChevronDown, LogOut, User, Loader2 } from 'lucide-react';
 
 export default function NavDashboard() {
     const { profile, setProfile, logout } = useAuthStore();

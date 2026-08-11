@@ -15,6 +15,7 @@ import {
     ClipboardCheck,
     User,
     Loader2,
+    PawPrint,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -120,26 +121,38 @@ function ProfileDropdown({
 
                     {petCount === 1 && (
                         <div className="w-8 h-8 rounded-full border-2 border-white shadow-sm overflow-hidden">
-                            <Image
-                                src={ownerProfile.pets![0].photo ?? '/default-pet.png'}
-                                alt={ownerProfile.pets![0].name ?? 'Pet'}
-                                width={32}
-                                height={32}
-                                className="w-full h-full object-cover"
-                            />
+                            {ownerProfile.pets![0].photo ? (
+                                <Image
+                                    src={ownerProfile.pets![0].photo}
+                                    alt={ownerProfile.pets![0].name ?? 'Pet'}
+                                    width={32}
+                                    height={32}
+                                    className="w-full h-full object-cover"
+                                />
+                            ) : (
+                                <div className="w-full h-full flex items-center justify-center bg-bg-clr">
+                                    <PawPrint className="w-4 h-4 text-pry-clr" />
+                                </div>
+                            )}
                         </div>
                     )}
 
                     {petCount > 1 && (
                         <div className="flex items-center gap-1.5">
                             <div className="w-8 h-8 rounded-full border-2 border-white shadow-sm overflow-hidden">
-                                <Image
-                                    src={ownerProfile.pets![0].photo ?? '/default-pet.png'}
-                                    alt={ownerProfile.pets![0].name ?? 'Pet'}
-                                    width={32}
-                                    height={32}
-                                    className="w-full h-full object-cover"
-                                />
+                                {ownerProfile.pets![0].photo ? (
+                                    <Image
+                                        src={ownerProfile.pets![0].photo}
+                                        alt={ownerProfile.pets![0].name ?? 'Pet'}
+                                        width={32}
+                                        height={32}
+                                        className="w-full h-full object-cover"
+                                    />
+                                ) : (
+                                    <div className="w-full h-full flex items-center justify-center bg-bg-clr">
+                                        <PawPrint className="w-4 h-4 text-pry-clr" />
+                                    </div>
+                                )}
                             </div>
                             <span className="text-xs font-semibold text-gray-500">
                                 +{petCount - 1}
