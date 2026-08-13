@@ -30,7 +30,7 @@ export function NotificationPermissionBanner() {
   };
 
   return (
-    <div className="relative z-20 flex items-center gap-3 bg-pry-clr rounded-2xl px-4 py-4 shadow-sm mb-4">
+    <div className="relative z-20 flex items-center gap-3 bg-pry-clr rounded-2xl px-4 py-4 shadow-sm mb-4 pry-ff">
       <button
         onClick={() => setDismissed(true)}
         className="absolute top-3 right-3 text-gray-400 hover:text-gray-600"
