@@ -120,7 +120,6 @@ export async function bookAppointments(
 }
 
 /* ================= CLINIC SCHEDULE ================= */
-
 export async function getClinicSchedule(
   clinicId: string,
   days: number = 14
@@ -141,7 +140,6 @@ export async function getClinicSchedule(
 }
 
 /* ================= CLINIC AVAILABILITY ================= */
-
 export async function getClinicAvailability(
   clinicId: string,
   date: string
