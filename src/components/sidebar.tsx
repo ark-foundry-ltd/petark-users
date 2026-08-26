@@ -242,7 +242,7 @@ export default function Sidebar() {
                 <div className={`flex items-center h-16 px-4 border-b border-gray-100 flex-shrink-0 ${collapsed ? 'justify-center' : 'gap-3'}`}>
                     <Link href="/dashboard" className="flex items-center gap-3 min-w-0">
                         <Image
-                            src="/green_logo_icon-removebg.png"
+                            src="/petark_logo.png"
                             alt="PetArk logo"
                             width={32}
                             height={32}
