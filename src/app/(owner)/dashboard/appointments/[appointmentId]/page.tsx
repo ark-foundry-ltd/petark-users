@@ -7,7 +7,7 @@ import { getAppointmentById, Appointment } from '@/libs/api/appointment';
 import {
   Calendar, User, Heart, Clock, FileText, CheckCircle,
   XCircle, AlertCircle, ArrowLeft, Phone, Mail, MapPin,
-  Activity, Stethoscope, Bell, Scale, Venus,
+  Activity, Stethoscope, Scale, Venus,
   Building2, Star, ChevronRight, Syringe, Dna, Tag, CalendarDays
 } from 'lucide-react';
 import Image from 'next/image';
@@ -116,10 +116,10 @@ export default function AppointmentDetails() {
               <h1 className="text-2xl font-bold text-gray-900">Appointment Details</h1>
             </div>
           </div>
-          <button className="flex items-center gap-2 px-5 py-2.5 bg-white rounded-xl text-sm font-semibold text-gray-700 shadow hover:shadow-md transition-all hover:scale-105">
+          {/* <button className="flex items-center gap-2 px-5 py-2.5 bg-white rounded-xl text-sm font-semibold text-gray-700 shadow hover:shadow-md transition-all hover:scale-105">
             <Bell className="w-4 h-4 text-[#38E07B]" />
             Remind Me
-          </button>
+          </button> */}
         </div>
 
         {/* ── Reference + Status banner ── */}

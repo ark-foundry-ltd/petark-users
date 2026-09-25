@@ -50,7 +50,7 @@ export default function GetAppointments() {
       try {
         const data = await getAppointments();
         // newest-upcoming first; sort by date ascending so "next" appointment is on top
-        const sorted = [...data].sort((a, b) => dayjs(a.date).valueOf() - dayjs(b.date).valueOf());
+        const sorted = [...data].sort((a, b) => dayjs(b.timeBooked).valueOf() - dayjs(a.timeBooked).valueOf());
         setAppointments(sorted);
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Failed to load appointments");
@@ -112,7 +112,7 @@ export default function GetAppointments() {
   const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden sec-ff">
+    <div className="bg-pry-clr rounded-2xl border border-gray-100 shadow-sm overflow-hidden sec-ff">
       {/* Header */}
       <div className="flex items-center justify-between gap-3 px-4 lg:px-6 py-4 border-b border-gray-100 flex-wrap">
         <div>
