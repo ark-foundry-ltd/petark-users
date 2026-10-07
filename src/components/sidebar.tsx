@@ -354,7 +354,7 @@ export default function Sidebar() {
             <header className="md:hidden fixed top-0 left-0 right-0 z-50 h-14 bg-white border-b border-gray-100 shadow-sm flex items-center justify-between px-4">
                 <Link href="/dashboard" className="flex items-center gap-2">
                     <Image
-                        src="/green_logo_icon-removebg.png"
+                        src="/petark_logo.png"
                         alt="PetArk logo"
                         width={28}
                         height={28}
