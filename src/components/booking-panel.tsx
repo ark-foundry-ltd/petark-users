@@ -65,20 +65,42 @@ function formatDateLabel(dateStr: string): string {
   });
 }
 
+// Why this time can't be booked (the server checks again; this just saves a round trip)
+function timeProblemFor(
+  day: ClinicScheduleDay | undefined,
+  dateStr: string,
+  time: string,
+): string | null {
+  if (!day || !time) return null;
+  if (!day.isOpen || !day.opensAt || !day.closesAt) return 'The clinic is closed on this day.';
+  if (time < day.opensAt || time >= day.closesAt) {
+    return `Appointments run from ${to12Hour(day.opensAt)} to ${to12Hour(day.closesAt)}.`;
+  }
+  if (new Date(`${dateStr}T${time}`).getTime() < Date.now()) {
+    return 'That time has already passed.';
+  }
+  if (day.bookedTimes.includes(time)) {
+    return 'Another appointment is already booked at that time.';
+  }
+  return null;
+}
+
 /* ── Types ── */
 interface BookingPanelProps {
   selectedClinic: Clinic | null;
   scheduleLoading: boolean;
-  filteredSchedule: (ClinicScheduleDay & { isOpen: boolean })[];
+  filteredSchedule: ClinicScheduleDay[];
   selectedDate: string;
   setSelectedDate: (date: string) => void;
-  selectedTime: string;
+  selectedTime: string; // "HH:mm"
   setSelectedTime: (time: string) => void;
   selectedPetId: string;
   setSelectedPetId: (id: string) => void;
   pets: Pet[];
   notes: string;
   setNotes: (notes: string) => void;
+  /** false = the owner has no phone number saved, so SMS updates can't reach them */
+  ownerHasPhone?: boolean;
   /** Called when the user taps the back arrow (mobile only) */
   onBack?: () => void;
   handleBook: () => Promise<void>;
@@ -101,6 +123,7 @@ export default function BookingPanel({
   pets,
   notes,
   setNotes,
+  ownerHasPhone,
   onBack,
   handleBook,
   bookingLoading,
@@ -116,7 +139,7 @@ export default function BookingPanel({
         </div>
         <p className="text-base font-semibold text-(--sec-clr) sec-ff">Select a clinic to book</p>
         <p className="text-sm text-gray-400 mt-1 text-center pry-ff">
-          Choose a clinic from the list to view available slots.
+          Choose a clinic from the list to pick a date and time.
         </p>
       </div>
     );
@@ -125,19 +148,10 @@ export default function BookingPanel({
   const services = selectedClinic.servicesProvided ?? [];
   const selectedPetName = pets.find((p) => p.id === selectedPetId)?.name;
 
-  const selectedDay = filteredSchedule.find((d) => d.date === selectedDate);
-  const morningSlots =
-    selectedDay?.slots.filter((s) => parseInt(s.time.split(':')[0], 10) < 12) ?? [];
-  const afternoonSlots =
-    selectedDay?.slots.filter((s) => parseInt(s.time.split(':')[0], 10) >= 12) ?? [];
-
-  /* Available dates sets */
-  const availableDates = new Set(
-    filteredSchedule.filter((d) => d.slots.some((s) => s.available)).map((d) => d.date),
-  );
-  const fullyBookedDates = new Set(
-    filteredSchedule.filter((d) => !d.slots.some((s) => s.available)).map((d) => d.date),
-  );
+  const dayByDate = new Map(filteredSchedule.map((d) => [d.date, d]));
+  const selectedDay = dayByDate.get(selectedDate);
+  const timeProblem = timeProblemFor(selectedDay, selectedDate, selectedTime);
+  const canBook = !!selectedPetId && !!selectedDate && !!selectedTime && !timeProblem;
 
   /* Calendar grid */
   const year = calendarMonth.getFullYear();
@@ -158,17 +172,11 @@ export default function BookingPanel({
     const day = String(d.getDate()).padStart(2, '0');
     return `${y}-${m}-${day}`;
   };
-  
+
+  const now = new Date();
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-
-  const timeSlotClass = (time: string, available: boolean) => {
-    if (selectedTime === time)
-      return 'bg-(--acc-clr) text-white shadow-sm border border-transparent';
-    if (available)
-      return 'bg-white border border-gray-200 text-(--sec-clr) hover:border-(--acc-clr) hover:bg-green-50';
-    return 'bg-gray-50 border border-gray-100 text-gray-300 cursor-not-allowed line-through decoration-red-300';
-  };
+  const nowHHmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden w-full">
@@ -326,12 +334,15 @@ export default function BookingPanel({
                       return <div key={di} />;
                     }
                     const ds = toDateStr(date);
+                    const info = dayByDate.get(ds);
                     const isPast = date < today;
-                    const isAvail = availableDates.has(ds);
-                    const isFull = fullyBookedDates.has(ds);
+                    const isToday = ds === toDateStr(today);
+                    // Closed days, and days outside the range the server sent, can't be picked.
+                    // Today can't be picked once the clinic has closed.
+                    const isClosed = !info || !info.isOpen;
+                    const closedForToday = isToday && !!info?.closesAt && nowHHmm >= info.closesAt;
+                    const isDisabled = isPast || isClosed || closedForToday;
                     const isActive = selectedDate === ds;
-                    const isToday = toDateStr(date) === toDateStr(today);
-                    const isDisabled = isPast || !isAvail;
 
                     return (
                       <button
@@ -348,7 +359,7 @@ export default function BookingPanel({
                           ${
                             isActive
                               ? 'bg-(--acc-clr) text-white shadow-sm'
-                              : isAvail && !isPast
+                              : !isDisabled
                                 ? 'bg-gray-50 border border-gray-200 text-(--sec-clr) hover:border-(--acc-clr) hover:bg-green-50'
                                 : isPast
                                   ? 'text-gray-200 cursor-not-allowed'
@@ -366,11 +377,6 @@ export default function BookingPanel({
                         {isToday && !isActive && (
                           <span className="absolute bottom-1 w-1 h-1 rounded-full bg-(--acc-clr)" />
                         )}
-                        {isFull && !isPast && !isActive && (
-                          <span className="absolute top-0.5 right-0.5 text-[7px] font-bold text-red-400 leading-none">
-                            F
-                          </span>
-                        )}
                       </button>
                     );
                   })}
@@ -385,58 +391,34 @@ export default function BookingPanel({
             )}
           </div>
 
-          {/* ── Time slots ── */}
-          {selectedDay && (
-            <div className="space-y-3">
+          {/* ── Time ── */}
+          {selectedDay?.isOpen && selectedDay.opensAt && selectedDay.closesAt && (
+            <div className="space-y-2">
               <h3 className="text-xs lg:text-sm font-bold text-(--sec-clr) sec-ff uppercase tracking-wide lg:normal-case lg:tracking-normal">
-                Available Time Slots
+                Pick a Time
               </h3>
 
-              {morningSlots.length > 0 && (
-                <div>
-                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5 pry-ff">
-                    Morning
-                  </p>
-                  <div className="grid grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
-                    {morningSlots.map((slot) => (
-                      <button
-                        key={slot.time}
-                        onClick={() => slot.available && setSelectedTime(slot.time)}
-                        disabled={!slot.available}
-                        className={`py-2 lg:py-2.5 rounded-xl text-xs lg:text-sm font-semibold transition-all duration-150 sec-ff ${timeSlotClass(slot.time, slot.available)}`}
-                      >
-                        {to12Hour(slot.time)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <p className="text-xs text-gray-500 pry-ff flex items-center gap-1.5">
+                <Clock className="w-3 h-3 text-gray-400" />
+                Open {to12Hour(selectedDay.opensAt)} – {to12Hour(selectedDay.closesAt)}
+              </p>
 
-              {afternoonSlots.length > 0 && (
-                <div>
-                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5 pry-ff">
-                    Afternoon
-                  </p>
-                  <div className="grid grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
-                    {afternoonSlots.map((slot) => (
-                      <button
-                        key={slot.time}
-                        onClick={() => slot.available && setSelectedTime(slot.time)}
-                        disabled={!slot.available}
-                        className={`py-2 lg:py-2.5 rounded-xl text-xs lg:text-sm font-semibold transition-all duration-150 sec-ff ${timeSlotClass(slot.time, slot.available)}`}
-                      >
-                        {to12Hour(slot.time)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <input
+                type="time"
+                value={selectedTime}
+                min={selectedDay.opensAt}
+                max={selectedDay.closesAt}
+                onChange={(e) => setSelectedTime(e.target.value)}
+                className="w-full sm:w-56 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-(--sec-clr) sec-ff focus:outline-none focus:border-(--acc-clr) focus:bg-white transition-colors [color-scheme:light]"
+              />
 
-              {selectedDay.slots.every((s) => !s.available) && (
-                <p className="text-gray-400 text-xs lg:text-sm text-center py-3 sec-ff">
-                  No available time slots.
+              {selectedDay.bookedTimes.length > 0 && (
+                <p className="text-xs text-gray-400 pry-ff">
+                  Already booked: {selectedDay.bookedTimes.map(to12Hour).join(', ')}
                 </p>
               )}
+
+              {timeProblem && <p className="text-xs text-red-500 pry-ff">{timeProblem}</p>}
             </div>
           )}
 
@@ -450,6 +432,11 @@ export default function BookingPanel({
               <p className="text-xs text-gray-600 pry-ff mt-0 lg:mt-0.5 leading-relaxed">
                 Appointments must be manually confirmed by the clinic before they are finalized.
               </p>
+              {ownerHasPhone === false && (
+                <p className="text-xs text-amber-700 pry-ff mt-1.5 leading-relaxed">
+                  Add your phone number in your profile to get SMS confirmations and reminders.
+                </p>
+              )}
             </div>
           </div>
 
@@ -465,7 +452,7 @@ export default function BookingPanel({
                 </p>
                 <p className="text-xs lg:text-sm font-bold text-(--sec-clr) sec-ff truncate">
                   {selectedClinic.startingTime && selectedClinic.closingTime
-                    ? `${selectedClinic.startingTime} – ${selectedClinic.closingTime}`
+                    ? `${to12Hour(selectedClinic.startingTime)} – ${to12Hour(selectedClinic.closingTime)}`
                     : 'See schedule'}
                 </p>
                 <p className="text-[10px] text-gray-500 pry-ff truncate hidden lg:block">
@@ -511,7 +498,7 @@ export default function BookingPanel({
           </div>
 
           {/* ── Notes (optional) ── */}
-          {selectedPetId && selectedDate && selectedTime && (
+          {canBook && (
             <div>
               <label className="text-xs lg:text-sm font-bold text-(--sec-clr) sec-ff uppercase tracking-wide lg:normal-case lg:tracking-normal block mb-1.5">
                 Reason <span className="text-gray-400 font-normal normal-case">(optional)</span>
@@ -527,7 +514,7 @@ export default function BookingPanel({
           )}
 
           {/* ── Book CTA ── */}
-          {selectedPetId && selectedDate && selectedTime && (
+          {canBook && (
             <button
               onClick={handleBook}
               disabled={bookingLoading}

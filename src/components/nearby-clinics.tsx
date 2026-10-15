@@ -17,12 +17,19 @@ import { toast } from 'sonner';
 import ClinicList from './clinic-list';
 import BookingPanel from './booking-panel';
 
-/* ── helper ── */
+/* ── helpers ── */
 function to12Hour(time24: string): string {
     const [h, m] = time24.split(':').map(Number);
     const period = h >= 12 ? 'PM' : 'AM';
     const hour12 = h % 12 === 0 ? 12 : h % 12;
     return `${hour12}:${String(m).padStart(2, '0')} ${period}`;
+}
+
+function localDateStr(d: Date): string {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
 }
 
 export default function NearbyClinicsPage() {
@@ -37,9 +44,10 @@ export default function NearbyClinicsPage() {
     const [scheduleLoading, setScheduleLoading] = useState(false);
 
     const [pets, setPets] = useState<Pet[]>([]);
+    const [ownerHasPhone, setOwnerHasPhone] = useState<boolean | undefined>(undefined);
     const [selectedPetId, setSelectedPetId] = useState('');
     const [selectedDate, setSelectedDate] = useState('');
-    const [selectedTime, setSelectedTime] = useState('');
+    const [selectedTime, setSelectedTime] = useState(''); // "HH:mm"
     const [notes, setNotes] = useState('');
     const [bookingLoading, setBookingLoading] = useState(false);
 
@@ -86,6 +94,7 @@ export default function NearbyClinicsPage() {
                 ]);
                 setSchedule(sched);
                 setPets(profile.pets ?? []);
+                setOwnerHasPhone(!!profile.phoneNumber);
             } catch (err: unknown) {
                 toast.error(err instanceof Error ? err.message : 'Failed to load schedule');
             } finally {
@@ -94,13 +103,18 @@ export default function NearbyClinicsPage() {
         })();
     }, [selectedClinic]);
 
-    /* ── filtered / enriched schedule ── */
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    /* Re-read the clinic's calendar from the server (after a booking, or a clash) */
+    const refreshSchedule = async (clinicId: string) => {
+        try {
+            setSchedule(await getClinicSchedule(clinicId));
+        } catch {
+            // keep showing what we already have
+        }
+    };
 
-    const filteredSchedule = schedule
-        .filter(d => new Date(d.date) >= today)
-        .map(d => ({ ...d, isOpen: d.slots.some(s => s.available) }));
+    /* ── schedule for the calendar: today onwards (dates are clinic-local YYYY-MM-DD) ── */
+    const todayStr = localDateStr(new Date());
+    const filteredSchedule = schedule.filter(d => d.date >= todayStr);
 
     /* ── handlers ── */
     const handleSelectClinic = (clinic: Clinic) => {
@@ -109,13 +123,14 @@ export default function NearbyClinicsPage() {
     };
 
     const handleBook = async () => {
+        if (!selectedClinic) return;
         if (!selectedPetId || !selectedDate || !selectedTime) {
             toast.error('Select pet, date and time');
             return;
         }
         setBookingLoading(true);
         try {
-            const query: BookAppointmentQuery = { clinicId: selectedClinic!._id };
+            const query: BookAppointmentQuery = { clinicId: selectedClinic._id };
             const time12 = to12Hour(selectedTime);
             await bookAppointments(
                 {
@@ -126,24 +141,9 @@ export default function NearbyClinicsPage() {
                 },
                 query
             );
-            toast.success(`Appointment booked for ${time12}`);
+            toast.success(`Appointment requested for ${time12}. The clinic will confirm it.`);
 
-            // Fix: compute updatedSlots first, then derive isOpen from them
-            setSchedule(prev =>
-                prev.map(day => {
-                    if (day.date !== selectedDate) return day;
-                    const updatedSlots = day.slots.map(slot =>
-                        slot.time === selectedTime
-                            ? { ...slot, available: false }
-                            : slot
-                    );
-                    return {
-                        ...day,
-                        slots: updatedSlots,
-                        isOpen: updatedSlots.some(s => s.available), // ← uses updated slots
-                    };
-                })
-            );
+            await refreshSchedule(selectedClinic._id);
 
             setSelectedTime('');
             setSelectedDate('');
@@ -159,6 +159,8 @@ export default function NearbyClinicsPage() {
             } else {
                 toast.error('Failed to book appointment');
             }
+            // If someone just took that time, show it as taken
+            await refreshSchedule(selectedClinic._id);
         } finally {
             setBookingLoading(false);
         }
@@ -205,6 +207,7 @@ export default function NearbyClinicsPage() {
                         pets={pets}
                         notes={notes}
                         setNotes={setNotes}
+                        ownerHasPhone={ownerHasPhone}
                         handleBook={handleBook}
                         bookingLoading={bookingLoading}
                         calendarMonth={calendarMonth}
@@ -239,6 +242,7 @@ export default function NearbyClinicsPage() {
                         pets={pets}
                         notes={notes}
                         setNotes={setNotes}
+                        ownerHasPhone={ownerHasPhone}
                         onBack={() => setMobileView('list')}
                         handleBook={handleBook}
                         bookingLoading={bookingLoading}

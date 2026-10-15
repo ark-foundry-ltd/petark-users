@@ -75,21 +75,32 @@ export interface BookAppointmentQuery {
   vetId?: string;
 }
 
+// What the server answers with after a booking request
+export interface BookAppointmentResult {
+  appointmentId: string;
+  date: string;
+  status: string;
+  notes?: string;
+  pet?: { _id: string; name: string };
+  clinic?: { _id: string; clinicName: string };
+}
+
 /* ================= SCHEDULE TYPES ================= */
 
+// One day of a clinic's calendar. There are no fixed slots: any time from opensAt up to
+// (not including) closesAt can be booked, except times already taken (bookedTimes).
 export type ClinicScheduleDay = {
-  date: string; // YYYY-MM-DD
-  day: string;  // Monday
+  date: string;            // YYYY-MM-DD (clinic-local)
+  day: string;             // Monday
   isOpen: boolean;
-  slots: {
-    time: string;        // "10:30"
-    available: boolean;
-  }[];
+  opensAt: string | null;  // "HH:mm"
+  closesAt: string | null; // "HH:mm"
+  bookedTimes: string[];   // "HH:mm" of appointments already booked that day
 };
 
-export type ClinicAvailabilitySlot = {
-  time: string;
-  available: boolean;
+export type ClinicDayAvailability = ClinicScheduleDay & {
+  clinicId?: string;
+  message?: string;
 };
 
 /* ================= API FUNCTIONS ================= */
@@ -97,7 +108,7 @@ export type ClinicAvailabilitySlot = {
 export async function bookAppointments(
   appointmentData: BookAppointmentData,
   query: BookAppointmentQuery
-): Promise<Appointment> {
+): Promise<BookAppointmentResult> {
   const token = localStorage.getItem("token") || "";
 
   const queryString = `?${new URLSearchParams({
@@ -116,7 +127,7 @@ export async function bookAppointments(
     }
   );
 
-  return response.data.data.appointment as Appointment;
+  return response.data.data as BookAppointmentResult;
 }
 
 /* ================= CLINIC SCHEDULE ================= */
@@ -143,11 +154,11 @@ export async function getClinicSchedule(
 export async function getClinicAvailability(
   clinicId: string,
   date: string
-): Promise<ClinicAvailabilitySlot[]> {
+): Promise<ClinicDayAvailability> {
   const token = localStorage.getItem("token") || "";
 
   const response = await api.get(
-    `${process.env.NEXT_PUBLIC_API_URL}/appointment/clinic/${clinicId}/availability`,
+    `${process.env.NEXT_PUBLIC_API_URL}/appointment/clinics/${clinicId}/availability`,
     {
       params: { date },
       headers: {
@@ -156,7 +167,7 @@ export async function getClinicAvailability(
     }
   );
 
-  return response.data.data.slots as ClinicAvailabilitySlot[];
+  return response.data.data as ClinicDayAvailability;
 }
 
 /* ================= USER PETS ================= */

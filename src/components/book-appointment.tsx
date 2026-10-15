@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
     getClinicSchedule,
     ClinicScheduleDay,
@@ -8,7 +8,7 @@ import {
     BookAppointmentQuery,
 } from '@/libs/api/appointment';
 import axios, { AxiosError } from 'axios';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock } from 'lucide-react';
 import Spinner from './ui/spinner';
 import { toast } from 'sonner';
 
@@ -22,6 +22,47 @@ async function getMyPets() {
     return res.data.data.pets as { _id: string; name: string }[];
 }
 
+/* ── helpers ── */
+function to12Hour(time24: string): string {
+    const [h, m] = time24.split(':').map(Number);
+    const period = h >= 12 ? 'PM' : 'AM';
+    const hour12 = h % 12 === 0 ? 12 : h % 12;
+    return `${hour12}:${String(m).padStart(2, '0')} ${period}`;
+}
+
+// "YYYY-MM-DD" -> a local Date for that calendar day (no timezone shifting)
+function parseDay(dateStr: string): Date {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return new Date(y, m - 1, d);
+}
+
+function localDateStr(d: Date): string {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
+// Why this time can't be booked (the server checks again; this just saves a round trip)
+function timeProblemFor(
+    day: ClinicScheduleDay | undefined,
+    dateStr: string,
+    time: string,
+): string | null {
+    if (!day || !time) return null;
+    if (!day.isOpen || !day.opensAt || !day.closesAt) return 'The clinic is closed on this day.';
+    if (time < day.opensAt || time >= day.closesAt) {
+        return `Appointments run from ${to12Hour(day.opensAt)} to ${to12Hour(day.closesAt)}.`;
+    }
+    if (new Date(`${dateStr}T${time}`).getTime() < Date.now()) {
+        return 'That time has already passed.';
+    }
+    if (day.bookedTimes.includes(time)) {
+        return 'Another appointment is already booked at that time.';
+    }
+    return null;
+}
+
 interface Props {
     clinicId: string;
     vetId?: string;
@@ -32,30 +73,33 @@ export default function BookAppointment({ clinicId, vetId }: Props) {
     const [pets, setPets] = useState<{ _id: string; name: string }[]>([]);
     const [selectedPetId, setSelectedPetId] = useState('');
     const [selectedDate, setSelectedDate] = useState('');
-    const [selectedTime, setSelectedTime] = useState('');
+    const [selectedTime, setSelectedTime] = useState(''); // "HH:mm"
     const [notes, setNotes] = useState('');
     const [loading, setLoading] = useState(false);
 
     const dateRef = useRef<HTMLDivElement | null>(null);
-    const timeRef = useRef<HTMLDivElement | null>(null);
 
-    const today = new Date();
+    const now = new Date();
+    const todayStr = localDateStr(now);
+    const nowHHmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-    const filteredSchedule = schedule
-        .filter(d => new Date(d.date) >= today)
-        .map(d => ({
-            ...d,
-            isOpen: d.slots.some(s => s.available),
-        }));
-
+    // Dates are the clinic's calendar days (YYYY-MM-DD), so compare them as strings
+    const filteredSchedule = schedule.filter(d => d.date >= todayStr);
     const selectedDay = filteredSchedule.find(d => d.date === selectedDate);
+
+    const timeProblem = timeProblemFor(selectedDay, selectedDate, selectedTime);
+    const canBook = !!selectedPetId && !!selectedDate && !!selectedTime && !timeProblem;
 
     useEffect(() => {
         async function fetchData() {
+            setSelectedDate('');
+            setSelectedTime('');
             try {
-                const sched = await getClinicSchedule(clinicId);
+                const [sched, myPets] = await Promise.all([
+                    getClinicSchedule(clinicId),
+                    getMyPets(),
+                ]);
                 setSchedule(sched);
-                const myPets = await getMyPets();
                 setPets(myPets);
             } catch (err: unknown) {
                 const message =
@@ -70,6 +114,15 @@ export default function BookAppointment({ clinicId, vetId }: Props) {
         fetchData();
     }, [clinicId]);
 
+    // Re-read the clinic's calendar from the server (after a booking, or a clash)
+    const refreshSchedule = async () => {
+        try {
+            setSchedule(await getClinicSchedule(clinicId));
+        } catch {
+            // keep showing what we already have
+        }
+    };
+
     const scroll = (ref: React.RefObject<HTMLDivElement | null>, dir: 'left' | 'right') => {
         ref.current?.scrollBy({ left: dir === 'left' ? -250 : 250, behavior: 'smooth' });
     };
@@ -79,35 +132,28 @@ export default function BookAppointment({ clinicId, vetId }: Props) {
             toast.error('Select pet, date and time');
             return;
         }
+        if (timeProblem) {
+            toast.error(timeProblem);
+            return;
+        }
 
         setLoading(true);
         try {
             const query: BookAppointmentQuery = { clinicId, vetId };
+            const time12 = to12Hour(selectedTime); // the server expects "10:30 AM"
             await bookAppointments(
                 {
                     petId: selectedPetId,
                     date: selectedDate,
-                    time: selectedTime,
+                    time: time12,
                     ...(notes.trim() ? { notes: notes.trim() } : {}),
                 },
                 query
             );
 
-            toast.success(`Appointment booked for ${selectedTime}`);
+            toast.success(`Appointment requested for ${time12}. The clinic will confirm it.`);
 
-            // Mark slot as unavailable locally
-            setSchedule(prev =>
-                prev.map(day => {
-                    if (day.date !== selectedDate) return day;
-                    return {
-                        ...day,
-                        slots: day.slots.map(slot =>
-                            slot.time === selectedTime ? { ...slot, available: false } : slot
-                        ),
-                        isOpen: day.slots.some(s => s.available),
-                    };
-                })
-            );
+            await refreshSchedule();
 
             setSelectedTime('');
             setSelectedDate('');
@@ -125,6 +171,8 @@ export default function BookAppointment({ clinicId, vetId }: Props) {
             } else {
                 toast.error('Failed to book appointment');
             }
+            // If someone just took that time, show it as taken
+            await refreshSchedule();
         } finally {
             setLoading(false);
         }
@@ -132,8 +180,10 @@ export default function BookAppointment({ clinicId, vetId }: Props) {
 
     const getMonthHeader = () => {
         if (!filteredSchedule.length) return '';
-        const firstDate = new Date(filteredSchedule[0].date);
-        return firstDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+        return parseDay(filteredSchedule[0].date).toLocaleDateString('en-US', {
+            month: 'long',
+            year: 'numeric',
+        });
     };
 
     return (
@@ -177,33 +227,39 @@ export default function BookAppointment({ clinicId, vetId }: Props) {
 
                         <div ref={dateRef} className="flex gap-3 overflow-x-auto pb-4 scrollbar-hide">
                             {filteredSchedule.map(day => {
-                                const dateObj = new Date(day.date);
-                                const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
-                                const dayNum = dateObj.getDate();
-                                const hasAvailableSlots = day.slots.some(s => s.available);
+                                const dayName = day.day.slice(0, 3);
+                                const dayNum = parseDay(day.date).getDate();
+                                // Closed days can't be picked, and neither can today once the clinic has closed
+                                const closedForToday =
+                                    day.date === todayStr && !!day.closesAt && nowHHmm >= day.closesAt;
+                                const selectable = day.isOpen && !closedForToday;
 
                                 return (
                                     <button
                                         key={day.date}
-                                        onClick={() => hasAvailableSlots && setSelectedDate(day.date)}
-                                        disabled={!hasAvailableSlots}
+                                        onClick={() => {
+                                            if (!selectable) return;
+                                            setSelectedDate(day.date);
+                                            setSelectedTime('');
+                                        }}
+                                        disabled={!selectable}
                                         className={`relative flex flex-col items-center justify-center min-w-[72px] sm:min-w-[80px] p-2 rounded-2xl font-semibold transition-all transform hover:scale-105
                                             ${selectedDate === day.date
                                                 ? 'bg-[#38E07B] text-white shadow-lg'
-                                                : hasAvailableSlots
+                                                : selectable
                                                     ? 'bg-white border-2 border-[#38E07B]/30 text-[#333333]'
                                                     : 'bg-gray-100 border-2 border-gray-200 text-gray-300 cursor-not-allowed opacity-70'
                                             }`}
                                     >
-                                        <span className={`text-xs sm:text-sm ${!hasAvailableSlots ? 'line-through decoration-red-400' : ''}`}>
+                                        <span className={`text-xs sm:text-sm ${!selectable ? 'line-through decoration-red-400' : ''}`}>
                                             {dayName}
                                         </span>
-                                        <span className={`text-lg sm:text-xl ${!hasAvailableSlots ? 'line-through decoration-red-400' : ''}`}>
+                                        <span className={`text-lg sm:text-xl ${!selectable ? 'line-through decoration-red-400' : ''}`}>
                                             {dayNum}
                                         </span>
-                                        {!hasAvailableSlots && (
+                                        {!selectable && (
                                             <span className="text-[9px] font-bold uppercase tracking-wide text-red-400 leading-tight mt-0.5">
-                                                Full
+                                                Closed
                                             </span>
                                         )}
                                     </button>
@@ -211,37 +267,41 @@ export default function BookAppointment({ clinicId, vetId }: Props) {
                             })}
                         </div>
 
-                        {/* TIMES */}
-                        {selectedDay && (
-                            <div>
-                                <h3 className="font-bold mb-2">Available Times</h3>
-                                <div ref={timeRef} className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 overflow-x-auto pb-2">
-                                    {selectedDay.slots.map(slot => (
-                                        <button
-                                            key={slot.time}
-                                            onClick={() => slot.available && setSelectedTime(slot.time)}
-                                            disabled={!slot.available}
-                                            className={`px-3 py-2 rounded-xl border font-medium transition-all transform hover:scale-105
-                                                ${selectedTime === slot.time
-                                                    ? 'bg-[#38E07B] text-white shadow-lg'
-                                                    : slot.available
-                                                        ? 'bg-white border-[#38E07B]/30 text-[#333333]'
-                                                        : 'bg-gray-100 border-gray-200 text-gray-300 cursor-not-allowed opacity-70 line-through decoration-red-400'
-                                                }`}
-                                        >
-                                            {slot.time}
-                                        </button>
-                                    ))}
-                                </div>
+                        {/* TIME */}
+                        {selectedDay?.isOpen && selectedDay.opensAt && selectedDay.closesAt && (
+                            <div className="space-y-2">
+                                <h3 className="font-bold">Pick a Time</h3>
 
-                                {selectedDay.slots.every(s => !s.available) && (
-                                    <p className="text-gray-500 text-center mt-2">No available time slots for this date</p>
+                                <p className="text-sm text-gray-500 flex items-center gap-1.5">
+                                    <Clock size={14} />
+                                    Open {to12Hour(selectedDay.opensAt)} – {to12Hour(selectedDay.closesAt)}
+                                </p>
+
+                                <input
+                                    type="time"
+                                    value={selectedTime}
+                                    min={selectedDay.opensAt}
+                                    max={selectedDay.closesAt}
+                                    onChange={e => setSelectedTime(e.target.value)}
+                                    className="w-full sm:w-64 border-2 border-[#38E07B]/30 p-3 sm:p-4 rounded-xl focus:outline-none focus:border-[#38E07B] [color-scheme:light]"
+                                />
+
+                                {selectedDay.bookedTimes.length > 0 && (
+                                    <p className="text-sm text-gray-400">
+                                        Already booked: {selectedDay.bookedTimes.map(to12Hour).join(', ')}
+                                    </p>
                                 )}
+
+                                {timeProblem && <p className="text-sm text-red-500">{timeProblem}</p>}
                             </div>
                         )}
 
+                        {filteredSchedule.length === 0 && (
+                            <p className="text-gray-500 text-center mt-2">No available dates</p>
+                        )}
+
                         {/* NOTES (optional) */}
-                        {selectedPetId && selectedDate && selectedTime && (
+                        {canBook && (
                             <div className="mt-4">
                                 <label className="block font-semibold mb-2">
                                     Notes <span className="text-gray-400 font-normal">(optional)</span>
@@ -257,13 +317,15 @@ export default function BookAppointment({ clinicId, vetId }: Props) {
                         )}
 
                         {/* CONFIRM BUTTON */}
-                        {selectedPetId && selectedDate && selectedTime && (
+                        {canBook && (
                             <button
                                 onClick={handleBook}
                                 disabled={loading}
                                 className="w-full mt-4 bg-[#38E07B] text-white py-4 rounded-2xl font-bold hover:shadow-lg transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                             >
-                                {loading ? <Spinner /> : `Confirm Booking - ${new Date(selectedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${selectedTime}`}
+                                {loading
+                                    ? <Spinner />
+                                    : `Confirm Booking - ${parseDay(selectedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${to12Hour(selectedTime)}`}
                             </button>
                         )}
                     </div>
